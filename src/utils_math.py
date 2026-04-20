@@ -1,0 +1,1 @@
+# Transformaciones de tensores a variables de decisión

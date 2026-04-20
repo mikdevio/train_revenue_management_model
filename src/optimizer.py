@@ -1,0 +1,1 @@
+# Lógica de Gurobi (Función objetivo y restricciones)
