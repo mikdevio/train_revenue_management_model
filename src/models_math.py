@@ -18,6 +18,7 @@ class DeterministicOptimizer:
     def _objective(self, lam):
         # p(lambda) = -1/beta * log(lambda/D)
         precio = -(1 / self.beta) * np.log(lam / self.D)
+
         ingresos = precio * lam * self.T
         return -ingresos
 
