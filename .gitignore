@@ -59,4 +59,4 @@ data/
 gurobi.env
 
 # Modelos .h5 .keras .pt .pkl .joblib metadata.json
-models/
+models/**
