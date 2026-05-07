@@ -1,1 +1,0 @@
-# Definición y carga de la Red Neuronal
