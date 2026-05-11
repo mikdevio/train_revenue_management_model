@@ -52,7 +52,6 @@ docs/_build/
 .venv
 venv
 virtualenv
-data/
 
 # Settings .env files
 .env

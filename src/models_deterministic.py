@@ -1,7 +1,6 @@
 # Definición y carga de la Red Neuronal
 """
 MODELO DETERMINISTA DE REVENUE MANAGEMENT PARA TRENES UNITARIOS
-===============================================================
 
 Implementación completa del modelo de trenes unitarios con:
 - Seguimiento de posición de trenes en la red
@@ -23,10 +22,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
-# ============================================================================
-# CLASES AUXILIARES Y ESTRUCTURAS DE DATOS
-# ============================================================================
 
+# CLASES AUXILIARES Y ESTRUCTURAS DE DATOS
 
 class TipoTrenEnum(Enum):
     """Tipos de tren disponibles"""
@@ -62,7 +59,7 @@ class ServicioTren:
 class DatosRedFerroviaria:
     """Contenedor completo de datos para el modelo determinista"""
 
-    # ===== Dimensiones =====
+    # Dimensiones
     H: int  # Horizonte de planificación (días de salida)
     K: int  # Número de clases de servicio
     S: int  # Número de estaciones
@@ -72,44 +69,42 @@ class DatosRedFerroviaria:
     SD: int  # Clases de estacionalidad
     TD: int  # Clases de tiempo-anticipación
 
-    # ===== Trenes =====
+    # Trenes
     tipo_tren_por_r: List[int]  # Tipo de cada tren r (0,1,2...)
     tipos_tren: List[TipoTren]  # Definición de tipos disponibles
 
-    # ===== Servicios =====
+    # Servicios
     servicios: List[ServicioTren]
 
-    # ===== Parámetros operativos =====
+    # Parámetros operativos
     PL: np.ndarray  # (N, H): 1 si servicio n opera día D
     TR: np.ndarray  # (N, S, S): matriz de rutas (opcional, para compatibilidad)
 
-    # ===== Posiciones iniciales =====
+    # Posiciones iniciales
     pos_inicial: np.ndarray  # (R, S): 1 si tren r inicia en estación i
 
-    # ===== Parámetros económicos =====
+    # Parámetros económicos
     precios: np.ndarray  # (K, N, O): precio opción o para clase k, servicio n
     CC: float  # Coste por acoplamiento
     OC: float  # Overhead
     AR: float  # Ingresos reales acumulados
 
-    # ===== Estacionalidad y demanda =====
+    #  Estacionalidad y demanda 
     SE: np.ndarray  # (H, N): clase de estacionalidad por día y servicio
     DE: np.ndarray  # (SD, TD, K, N, O): demanda determinista por segmento
 
-    # ===== Ventas realizadas antes del planning =====
+    #  Ventas realizadas antes del planning 
     RW: np.ndarray  # (H, K, N): trenes con reservas
     RS: np.ndarray  # (H, K, N): asientos reservados
 
-    # ===== Parámetros de configuración =====
+    #  Parámetros de configuración 
     MAX_COUPLE: int = 1  # Máximo acoplamientos (sí/no)
     EPSILON: float = 0.01  # Para desigualdad estricta
     BIG_M: float = 1e6  # Para restricciones big-M
 
 
-# ============================================================================
-# MODELO PRINCIPAL
-# ============================================================================
 
+# MODELO PRINCIPAL
 
 class ModeloTrenesUnitariosDeterminista:
     """
@@ -140,9 +135,9 @@ class ModeloTrenesUnitariosDeterminista:
         datos = self.datos
         m = self.modelo
 
-        # ============================================================
+        # 
         # 1. CONJUNTOS (Índices)
-        # ============================================================
+        # 
 
         m.DIAS = pyo.RangeSet(1, datos.H)  # Días de salida
         m.CLASES = pyo.RangeSet(1, datos.K)  # Clases de servicio
@@ -152,9 +147,9 @@ class ModeloTrenesUnitariosDeterminista:
         m.OPCIONES = pyo.RangeSet(1, datos.O)  # Opciones de precio
         m.TIEMPO = pyo.RangeSet(1, datos.H)  # Días de anticipación (máx H)
 
-        # ============================================================
+        # 
         # 2. PARÁMETROS DEL MODELO
-        # ============================================================
+        # 
 
         # Capacidad del tren r (asientos)
         def _capacidad_tren_init(m, r):
@@ -251,9 +246,8 @@ class ModeloTrenesUnitariosDeterminista:
         m.EPSILON = pyo.Param(initialize=datos.EPSILON)
         m.BIG_M = pyo.Param(initialize=datos.BIG_M)
 
-        # ============================================================
+        # 
         # 3. VARIABLES DE DECISIÓN
-        # ============================================================
 
         # (pos) Posición de trenes
         m.pos = pyo.Var(m.TRENES, m.ESTACIONES, m.DIAS, domain=pyo.Binary)
@@ -283,9 +277,8 @@ class ModeloTrenesUnitariosDeterminista:
         # (cap_servicio) Capacidad total del servicio
         m.cap_servicio = pyo.Var(m.SERVICIOS, m.DIAS, domain=pyo.NonNegativeReals)
 
-        # ============================================================
+        # 
         # 4. RESTRICCIONES DE POSICIÓN Y MOVIMIENTO (P1-P11)
-        # ============================================================
 
         # (P1) Posición inicial
         def _pos_inicial_rule(m, r, i):
@@ -389,10 +382,9 @@ class ModeloTrenesUnitariosDeterminista:
 
         m.LimiteAcoplado = pyo.Constraint(m.TRENES, m.DIAS, rule=_limite_acoplado_rule)
 
-        # ============================================================
+        # 
         # 5. RESTRICCIONES DE CAPACIDAD Y VENTAS (C1-C5)
-        # ============================================================
-
+        
         # (C1) Capacidad total del servicio con acoplamiento
         def _capacidad_servicio_rule(m, n, D):
             capacidad_base = sum(
@@ -449,10 +441,9 @@ class ModeloTrenesUnitariosDeterminista:
             m.CLASES, m.SERVICIOS, m.TIEMPO, m.DIAS, rule=_no_ventas_sin_servicio_rule
         )
 
-        # ============================================================
+        # 
         # 6. RESTRICCIONES DE ASIGNACIÓN DE TRENES (A1-A4)
-        # ============================================================
-
+        
         # (A1) Un servicio por tren por día
         def _un_servicio_por_tren_rule(m, r, D):
             return sum(m.u[r, n, D] for n in m.SERVICIOS) <= 1
@@ -495,10 +486,9 @@ class ModeloTrenesUnitariosDeterminista:
             m.TRENES, m.TRENES, m.DIAS, rule=_mismo_tipo_acoplamiento_rule
         )
 
-        # ============================================================
+        
         # 7. RESTRICCIONES DE PRECIOS (PR1-PR2)
-        # ============================================================
-
+        
         # (PR1) Jerarquía de precios por clase
         def _precio_jerarquico_rule(m, k, n, t, D):
             if k >= datos.K or t > D:
@@ -523,10 +513,9 @@ class ModeloTrenesUnitariosDeterminista:
             m.CLASES, m.SERVICIOS, m.TIEMPO, m.DIAS, rule=_una_opcion_precio_rule
         )
 
-        # ============================================================
+        # 
         # 8. FUNCIÓN OBJETIVO (OBJ)
-        # ============================================================
-
+        
         def _objetivo_rule(m):
             # Ingresos totales
             ingresos = sum(
@@ -576,10 +565,9 @@ class ModeloTrenesUnitariosDeterminista:
 
         m.Objetivo = pyo.Objective(rule=_objetivo_rule, sense=pyo.maximize)
 
-    # ============================================================
+    # 
     # MÉTODOS DE SOLUCIÓN
-    # ============================================================
-
+    
     def resolver(
         self,
         solver_name: str = "gurobi",
@@ -644,10 +632,9 @@ class ModeloTrenesUnitariosDeterminista:
             "gap": resultados.solver.gap if hasattr(resultados.solver, "gap") else None,
         }
 
-    # ============================================================
+    # 
     # MÉTODOS DE EXTRACCIÓN DE RESULTADOS
-    # ============================================================
-
+    
     def obtener_solucion(self) -> Dict[str, Any]:
         """Extrae la solución completa del modelo resuelto"""
 
@@ -711,10 +698,8 @@ class ModeloTrenesUnitariosDeterminista:
             print(f"  Día {D}: Tren {r} → Estación {i}")
 
 
-# ============================================================================
-# FUNCIONES AUXILIARES PARA GENERAR DATOS DE EJEMPLO
-# ============================================================================
 
+# FUNCIONES AUXILIARES PARA GENERAR DATOS DE EJEMPLO
 
 def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
     """
@@ -722,10 +707,10 @@ def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
     Este ejemplo simula una red pequeña con 2 estaciones, 2 trenes y 2 servicios.
     """
 
-    # ===== Dimensiones =====
+    #  Dimensiones 
     H, K, S, N, R, O, SD, TD = 3, 2, 2, 2, 2, 2, 2, 2
 
-    # ===== Tipos de tren =====
+    #  Tipos de tren 
     tipos_tren = [
         TipoTren(
             "Premium",
@@ -746,26 +731,26 @@ def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
     # Tren 1: Premium, Tren 2: LowCost
     tipo_tren_por_r = [0, 1]
 
-    # ===== Servicios =====
+    #  Servicios 
     servicios = [
         ServicioTren(id=1, origen=1, destino=2, duracion=1, horarios=[1, 2, 3]),
         ServicioTren(id=2, origen=2, destino=1, duracion=1, horarios=[1, 2, 3]),
     ]
 
-    # ===== Programación =====
+    #  Programación 
     PL = np.ones((N, H))  # Todos los servicios operan todos los días
 
-    # ===== Matriz de rutas (opcional) =====
+    #  Matriz de rutas (opcional) 
     TR = np.zeros((N, S, S))
     for idx, srv in enumerate(servicios):
         TR[idx, srv.origen - 1, srv.destino - 1] = 1
 
-    # ===== Posiciones iniciales =====
+    #  Posiciones iniciales 
     pos_inicial = np.zeros((R, S))
     pos_inicial[0, 0] = 1  # Tren 1 en estación 1
     pos_inicial[1, 1] = 1  # Tren 2 en estación 2
 
-    # ===== Precios =====
+    #  Precios 
     precios = np.zeros((K, N, O))
     for k in range(K):
         for n in range(N):
@@ -775,19 +760,19 @@ def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
                 mult_precio = [0.8, 1.0, 1.2][o]
                 precios[k, n, o] = base * mult_clase * mult_precio
 
-    # ===== Parámetros económicos =====
+    #  Parámetros económicos 
     CC, OC, AR = 200.0, 65000.0, 0.0
 
-    # ===== Estacionalidad =====
+    #  Estacionalidad 
     SE = np.ones((H, N), dtype=int)  # Siempre temporada media
 
-    # ===== Demanda determinista =====
+    #  Demanda determinista 
     DE = np.ones((SD, TD, K, N, O)) * 30.0
     DE[:, :, :, :, 0] = 45.0  # Precio bajo: más demanda
     DE[:, :, :, :, 1] = 30.0  # Precio medio: demanda media
     DE[:, :, :, :, 2] = 20.0 if O > 2 else 30.0  # Precio alto: menos demanda
 
-    # ===== Ventas previas =====
+    #  Ventas previas 
     RW = np.zeros((H, K, N))
     RS = np.zeros((H, K, N))
 
@@ -820,9 +805,9 @@ def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
     )
 
 
-# ============================================================================
+
 # EJEMPLO DE USO
-# ============================================================================
+
 
 if __name__ == "__main__":
 
