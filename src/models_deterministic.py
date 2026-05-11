@@ -15,6 +15,8 @@ Soportes:
 Autor: Basado en la adaptación del modelo de Kamandanipour et al. (2023)
 """
 
+from xml.parsers.expat import model
+
 import pyomo.environ as pyo
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Any
@@ -616,11 +618,26 @@ class ModeloTrenesUnitariosDeterminista:
             solver.options["mipgap"] = gap
             if not verbose:
                 solver.options["msg_lev"] = 0
+        
+        elif solver_name.lower() == "bonmin":
+            solver = pyo.SolverFactory("bonmin")
+
+        elif solver_name.lower() == "ipopt":
+            solver = pyo.SolverFactory("ipopt")
+            solver.options["max_iter"] = time_limit
+        elif solver_name.lower() == "mindtpy":
+            solver = pyo.SolverFactory('mindtpy')
+            solve_kwargs = {
+            'mip_solver': 'cbc',
+            'nlp_solver': 'ipopt',
+            'strategy': 'OA',
+            'time_limit': 300, # Opcional: límite de tiempo en segundos
+        }
         else:
             raise ValueError(f"Solver no soportado: {solver_name}")
 
         # Resolver
-        resultados = solver.solve(self.modelo, tee=verbose)
+        resultados = solver.solve(self.modelo, tee=verbose, **solve_kwargs)
 
         return {
             "status": resultados.solver.termination_condition,
@@ -640,7 +657,7 @@ class ModeloTrenesUnitariosDeterminista:
 
         solucion = {
             "objetivo": pyo.value(self.modelo.Objetivo),
-            "estado": "optimal" if self._es_optimal() else "no_optimal",
+            # "estado": "optimal" if self._es_optimal() else "no_optimal",
             "trenes": {"posiciones": {}, "asignaciones": {}, "acoplamientos": {}},
             "ventas": {},
             "precios": {},
@@ -696,158 +713,3 @@ class ModeloTrenesUnitariosDeterminista:
         print("\n--- POSICIONES ---")
         for (r, D), i in sol["trenes"]["posiciones"].items():
             print(f"  Día {D}: Tren {r} → Estación {i}")
-
-
-
-# FUNCIONES AUXILIARES PARA GENERAR DATOS DE EJEMPLO
-
-def generar_datos_ejemplo_pequeno() -> DatosRedFerroviaria:
-    """
-    Genera un conjunto de datos de ejemplo para probar el modelo.
-    Este ejemplo simula una red pequeña con 2 estaciones, 2 trenes y 2 servicios.
-    """
-
-    #  Dimensiones 
-    H, K, S, N, R, O, SD, TD = 3, 2, 2, 2, 2, 2, 2, 2
-
-    #  Tipos de tren 
-    tipos_tren = [
-        TipoTren(
-            "Premium",
-            capacidad=40,
-            costo_fijo=8500,
-            costo_variable_base=75,
-            multiplicador_clase=[1.5, 1.0, 0.7],
-        ),
-        TipoTren(
-            "LowCost",
-            capacidad=60,
-            costo_fijo=5000,
-            costo_variable_base=45,
-            multiplicador_clase=[1.5, 1.0, 0.7],
-        ),
-    ]
-
-    # Tren 1: Premium, Tren 2: LowCost
-    tipo_tren_por_r = [0, 1]
-
-    #  Servicios 
-    servicios = [
-        ServicioTren(id=1, origen=1, destino=2, duracion=1, horarios=[1, 2, 3]),
-        ServicioTren(id=2, origen=2, destino=1, duracion=1, horarios=[1, 2, 3]),
-    ]
-
-    #  Programación 
-    PL = np.ones((N, H))  # Todos los servicios operan todos los días
-
-    #  Matriz de rutas (opcional) 
-    TR = np.zeros((N, S, S))
-    for idx, srv in enumerate(servicios):
-        TR[idx, srv.origen - 1, srv.destino - 1] = 1
-
-    #  Posiciones iniciales 
-    pos_inicial = np.zeros((R, S))
-    pos_inicial[0, 0] = 1  # Tren 1 en estación 1
-    pos_inicial[1, 1] = 1  # Tren 2 en estación 2
-
-    #  Precios 
-    precios = np.zeros((K, N, O))
-    for k in range(K):
-        for n in range(N):
-            base = 100 if n == 0 else 80
-            mult_clase = [1.5, 1.0][k]
-            for o in range(O):
-                mult_precio = [0.8, 1.0, 1.2][o]
-                precios[k, n, o] = base * mult_clase * mult_precio
-
-    #  Parámetros económicos 
-    CC, OC, AR = 200.0, 65000.0, 0.0
-
-    #  Estacionalidad 
-    SE = np.ones((H, N), dtype=int)  # Siempre temporada media
-
-    #  Demanda determinista 
-    DE = np.ones((SD, TD, K, N, O)) * 30.0
-    DE[:, :, :, :, 0] = 45.0  # Precio bajo: más demanda
-    DE[:, :, :, :, 1] = 30.0  # Precio medio: demanda media
-    DE[:, :, :, :, 2] = 20.0 if O > 2 else 30.0  # Precio alto: menos demanda
-
-    #  Ventas previas 
-    RW = np.zeros((H, K, N))
-    RS = np.zeros((H, K, N))
-
-    return DatosRedFerroviaria(
-        H=H,
-        K=K,
-        S=S,
-        N=N,
-        R=R,
-        O=O,
-        SD=SD,
-        TD=TD,
-        tipo_tren_por_r=tipo_tren_por_r,
-        tipos_tren=tipos_tren,
-        servicios=servicios,
-        PL=PL,
-        TR=TR,
-        pos_inicial=pos_inicial,
-        precios=precios,
-        CC=CC,
-        OC=OC,
-        AR=AR,
-        SE=SE,
-        DE=DE,
-        RW=RW,
-        RS=RS,
-        MAX_COUPLE=1,
-        EPSILON=0.01,
-        BIG_M=1e6,
-    )
-
-
-
-# EJEMPLO DE USO
-
-
-if __name__ == "__main__":
-
-    print("=" * 70)
-    print("MODELO DETERMINISTA DE TRENES UNITARIOS")
-    print("=" * 70)
-
-    # Generar datos de ejemplo
-    print("\n📊 Generando datos de ejemplo...")
-    datos = generar_datos_ejemplo_pequeno()
-
-    print(f"  - Horizonte: {datos.H} días")
-    print(f"  - Servicios: {datos.N}")
-    print(
-        f"  - Trenes: {datos.R} (Premium: {datos.tipo_tren_por_r.count(0)}, LowCost: {datos.tipo_tren_por_r.count(1)})"
-    )
-    print(f"  - Estaciones: {datos.S}")
-    print(f"  - Clases: {datos.K}")
-
-    # Crear modelo
-    print("\n🔧 Construyendo modelo Pyomo...")
-    modelo = ModeloTrenesUnitariosDeterminista(datos)
-
-    # Mostrar estadísticas
-    num_vars = len(modelo.modelo.component_objects(pyo.Var, active=True))
-    num_constr = len(modelo.modelo.component_objects(pyo.Constraint, active=True))
-    print(f"  - Variables: {num_vars} grupos")
-    print(f"  - Restricciones: {num_constr} grupos")
-
-    # Resolver
-    print("\n🚀 Resolviendo con Gurobi...")
-    resultado = modelo.resolver(
-        solver_name="gurobi", time_limit=60, gap=0.01, verbose=True
-    )
-
-    print(f"\n📈 Estado de la solución: {resultado['status']}")
-    print(f"⏱️  Tiempo: {resultado['tiempo']:.2f} segundos")
-
-    if resultado["gap"] is not None:
-        print(f"📊 Gap de optimalidad: {resultado['gap']:.4%}")
-
-    # Mostrar resultados
-    modelo.imprimir_resumen()
